@@ -12,7 +12,7 @@ function ensureCleanup() {
   if (cleanupInterval) return;
   cleanupInterval = setInterval(() => {
     const now = Date.now();
-    for (const [key, entry] of rateLimitStore) {
+    for (const [key, entry] of Array.from(rateLimitStore.entries())) {
       if (entry.resetAt <= now) {
         rateLimitStore.delete(key);
       }

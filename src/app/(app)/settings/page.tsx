@@ -93,7 +93,7 @@ export default function SettingsPage() {
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <ModeSelector value={defaultMode} onChange={setDefaultMode} />
+          <ModeSelector value={defaultMode} onChange={(name: string) => setDefaultMode(name as HumanizationMode)} />
         </CardContent>
       </Card>
 

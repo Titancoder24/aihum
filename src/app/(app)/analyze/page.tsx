@@ -252,7 +252,7 @@ export default function AnalyzePage() {
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <ModeSelector value={mode} onChange={setMode} />
+                <ModeSelector value={mode} onChange={(name: string) => setMode(name as HumanizationMode)} />
               </CardContent>
             </Card>
 
@@ -307,9 +307,9 @@ export default function AnalyzePage() {
                   <p className="mb-4 text-xs font-medium uppercase tracking-wider text-white/40">
                     Humanized Score
                   </p>
-                  <ScoreGauge value={humanizationResult.humanizedScore} size="md" />
+                  <ScoreGauge value={humanizationResult.afterScore} size="md" />
                   <p className="mt-3 text-sm text-white/50">
-                    {Math.round(humanizationResult.humanizedScore)}% AI Detected
+                    {Math.round(humanizationResult.afterScore)}% AI Detected
                   </p>
                 </CardContent>
               </Card>
@@ -320,7 +320,7 @@ export default function AnalyzePage() {
               <Badge className="bg-[#10B981]/15 px-4 py-2 text-sm text-[#10B981] border-transparent">
                 Score reduced by{' '}
                 {Math.round(
-                  detectionResult.overallScore - humanizationResult.humanizedScore
+                  detectionResult.overallScore - humanizationResult.afterScore
                 )}
                 %
               </Badge>
@@ -332,12 +332,12 @@ export default function AnalyzePage() {
                 <CardTitle className="text-sm font-semibold text-white">
                   Text Comparison
                 </CardTitle>
-                <CopyButton text={humanizationResult.humanizedText} />
+                <CopyButton text={humanizationResult.humanized} />
               </CardHeader>
               <CardContent>
                 <TextDiff
                   original={text}
-                  modified={humanizationResult.humanizedText}
+                  modified={humanizationResult.humanized}
                 />
               </CardContent>
             </Card>
@@ -346,14 +346,13 @@ export default function AnalyzePage() {
             <div className="flex items-center justify-center gap-3">
               <Button
                 onClick={handleReset}
-                variant="outline"
+                variant="ghost"
                 className="border-white/[0.08] text-white/70 hover:bg-white/[0.04] hover:text-white"
               >
                 Analyze Another
               </Button>
               <CopyButton
-                text={humanizationResult.humanizedText}
-                variant="default"
+                text={humanizationResult.humanized}
                 className="bg-[#10B981] text-white hover:bg-[#0EA472]"
               />
             </div>
