@@ -46,9 +46,9 @@ function jaccardSimilarity(wordsA: string[], wordsB: string[]): number {
   if (setA.size === 0 && setB.size === 0) return 1;
 
   let intersection = 0;
-  for (const w of setA) {
+  Array.from(setA).forEach((w) => {
     if (setB.has(w)) intersection++;
-  }
+  });
 
   const union = setA.size + setB.size - intersection;
   return union === 0 ? 0 : intersection / union;

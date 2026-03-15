@@ -296,7 +296,7 @@ function paragraphStartRepetition(paragraphs: string[]): number {
   for (const s of starts) {
     starterCounts.set(s, (starterCounts.get(s) || 0) + 1);
   }
-  const maxRepeat = Math.max(...starterCounts.values(), 0);
+  const maxRepeat = Math.max(...Array.from(starterCounts.values()), 0);
   const repeatRatio = paragraphs.length > 1 ? maxRepeat / paragraphs.length : 0;
 
   const transitionRatio = transitionStarts / paragraphs.length;

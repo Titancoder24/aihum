@@ -1,53 +1,26 @@
 /**
- * AI content detection engine.
- * Analyzes text and returns a detection score indicating AI-generated probability.
+ * Detection engine barrel exports.
+ *
+ * Re-exports the main ensemble scorer and all individual detection modules.
  */
 
-import type { DetectionResult } from '@/types';
-import { splitSentences, tokenizeWords } from '@/lib/nlp/tokenizer';
+// Main detection function
+export { detectAIContent } from './ensemble';
 
-/**
- * Detect AI-generated content in the provided text.
- * Returns a DetectionResult with an overallScore from 0-100.
- */
-export function detectAIContent(text: string): DetectionResult {
-  const startTime = performance.now();
+// Individual detection modules
+export { default as perplexityModule } from './perplexity';
+export { default as burstinessModule } from './burstiness';
+export { default as vocabularyDiversityModule } from './vocabulary-diversity';
+export { default as structuralPatternsModule } from './structural-patterns';
+export { default as coherenceFlowModule } from './coherence-flow';
+export { default as stylometricModule } from './stylometric';
+export { default as statisticalSignatureModule } from './statistical-signature';
 
-  if (!text || !text.trim()) {
-    return {
-      overallScore: 0,
-      confidence: 'low',
-      sentences: [],
-      modules: [],
-      patterns: [],
-      wordCount: 0,
-      processingTimeMs: 0,
-    };
-  }
-
-  const sentences = splitSentences(text);
-  const words = tokenizeWords(text);
-
-  // Placeholder scoring — real implementation would use statistical models
-  const sentenceScores = sentences.map((s, i) => ({
-    text: s,
-    index: i,
-    score: 0.5,
-    color: 'yellow' as const,
-    moduleScores: {} as Record<string, number>,
-  }));
-
-  const overallScore = 50;
-
-  const processingTimeMs = performance.now() - startTime;
-
-  return {
-    overallScore,
-    confidence: 'medium',
-    sentences: sentenceScores,
-    modules: [],
-    patterns: [],
-    wordCount: words.length,
-    processingTimeMs,
-  };
-}
+// Constants
+export {
+  AI_COMMON_WORDS,
+  TRANSITION_PHRASES,
+  HEDGING_PHRASES,
+  POSITIVE_WORDS,
+  NEGATIVE_WORDS,
+} from './constants';

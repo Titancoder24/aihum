@@ -288,7 +288,12 @@ const vocabularyDiversityModule: DetectionModule = {
     }
 
     // ------ 2. Shannon entropy ------
-    const entropy = shannonEntropy(tokens);
+    const tokenFreqMap = new Map<string, number>();
+    for (const t of tokens) {
+      const lower = t.toLowerCase();
+      tokenFreqMap.set(lower, (tokenFreqMap.get(lower) ?? 0) + 1);
+    }
+    const entropy = shannonEntropy(tokenFreqMap);
     // Human English text ≈ 9-11 bits; AI tends ≈ 7-9 bits
     const entropyScore = rangeScore(entropy, 10.5, 7.5);
     scores.push(entropyScore);
@@ -412,9 +417,10 @@ const vocabularyDiversityModule: DetectionModule = {
       });
 
       const currentSet = new Set(tokens.map((w) => w.toLowerCase()));
+      const currentArr = Array.from(currentSet);
       const overlaps = neighborTokenSets.map((ns) => {
         let shared = 0;
-        for (const w of currentSet) {
+        for (const w of currentArr) {
           if (ns.has(w)) shared++;
         }
         return shared / Math.max(1, currentSet.size);
