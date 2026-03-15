@@ -7,7 +7,7 @@
 
 import type { DetectionModule, ModuleAnalysis, SentenceContext, DetectedPattern } from '@/types';
 import { splitSentences, tokenizeWords } from '@/lib/nlp/tokenizer';
-import { mean, standardDeviation, normalize } from '@/lib/nlp/statistics';
+import { mean, standardDeviation, normalize, coefficientOfVariation } from '@/lib/nlp/statistics';
 import { DEFAULT_DETECTION_WEIGHTS } from '@/constants';
 
 function detectListPatterns(text: string): number {
@@ -52,8 +52,8 @@ function detectFormulaParagraphs(text: string): number {
   const sd = standardDeviation(paraLengths);
   const cv = avg > 0 ? sd / avg : 0;
 
-  // Low CV = formulaic (AI-like)
-  return normalize(cv, 0.1, 0.6, 1, 0);
+  // Low CV = formulaic (AI-like): invert so low CV => high score
+  return 1 - normalize(cv, 0.1, 0.6);
 }
 
 const structuralModule: DetectionModule = {
@@ -70,11 +70,11 @@ const structuralModule: DetectionModule = {
     }
 
     // List pattern density
-    const listScore = normalize(detectListPatterns(text), 0.1, 0.5, 0, 1);
+    const listScore = normalize(detectListPatterns(text), 0.1, 0.5);
 
     // Parallel construction
     const parallelRatio = detectParallelConstruction(sentences);
-    const parallelScore = normalize(parallelRatio, 0.1, 0.4, 0, 1);
+    const parallelScore = normalize(parallelRatio, 0.1, 0.4);
 
     // Formulaic paragraph structure
     const formulaScore = detectFormulaParagraphs(text);
@@ -90,7 +90,7 @@ const structuralModule: DetectionModule = {
         const avg = mean(lens);
         const sd = standardDeviation(lens);
         const cv = avg > 0 ? sd / avg : 0;
-        uniformitySum += normalize(cv, 0.1, 0.5, 1, 0);
+        uniformitySum += 1 - normalize(cv, 0.1, 0.5);
         uniformityCount++;
       }
     }

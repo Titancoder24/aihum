@@ -1,153 +1,294 @@
 /**
  * Stage 5: Coherence Humanization
  *
- * Adds human-sounding qualifiers, removes AI summarization patterns,
- * introduces natural hedging, allows slight redundancy, and adds
- * callbacks to earlier points.
+ * Adds personal-sounding qualifiers, removes AI summarization patterns,
+ * replaces AI hedging with natural hedging, and adds occasional callbacks
+ * to earlier points — all the small signals that make text feel written
+ * by a real person rather than generated.
  */
 
 import type { HumanizationStage, ModeConfig } from '@/types';
 import { splitSentences } from '@/lib/nlp/tokenizer';
 
-// ── Deterministic seeded PRNG ────────────────────────────────────────────────
-
-function hashText(text: string): number {
-  let hash = 0;
-  for (let i = 0; i < text.length; i++) {
-    const ch = text.charCodeAt(i);
-    hash = ((hash << 5) - hash + ch) | 0;
-  }
-  return Math.abs(hash);
-}
+// ---------------------------------------------------------------------------
+// Deterministic seeded PRNG (Mulberry32)
+// ---------------------------------------------------------------------------
 
 function createRng(seed: number): () => number {
-  let s = seed | 0 || 1;
+  let s = seed | 0;
   return (): number => {
-    s = (s * 1664525 + 1013904223) | 0;
-    return (s >>> 0) / 0x100000000;
+    s = (s + 0x6d2b79f5) | 0;
+    let t = Math.imul(s ^ (s >>> 15), 1 | s);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
   };
 }
 
-// ── Patterns & Pools ─────────────────────────────────────────────────────────
+function hashText(text: string): number {
+  let h = 0;
+  for (let i = 0; i < text.length; i++) {
+    h = (Math.imul(31, h) + text.charCodeAt(i)) | 0;
+  }
+  return h;
+}
 
-/** AI summarization openers that should be removed. */
-const SUMMARIZATION_PATTERNS: RegExp[] = [
-  /^As\s+mentioned\s+(above|earlier|previously),?\s*/i,
-  /^As\s+we('ve|\s+have)\s+(discussed|seen|noted|explored),?\s*/i,
-  /^To\s+summarize,?\s*/i,
-  /^In\s+summary,?\s*/i,
-  /^To\s+sum\s+up,?\s*/i,
-  /^As\s+previously\s+(stated|mentioned|noted),?\s*/i,
-  /^As\s+noted\s+(above|earlier|previously),?\s*/i,
-  /^To\s+recap,?\s*/i,
-  /^In\s+conclusion,?\s*/i,
+// ---------------------------------------------------------------------------
+// Personal qualifiers (only used when !preserveFormalTone)
+// ---------------------------------------------------------------------------
+
+const PERSONAL_QUALIFIERS: string[] = [
+  'In my experience,',
+  'From what I\'ve seen,',
+  'I\'d argue',
+  'I think',
+  'Honestly,',
+  'If you ask me,',
+  'In my view,',
+  'The way I see it,',
 ];
 
-/** AI-style stiff hedging patterns and their natural replacements. */
-const AI_HEDGING_REPLACEMENTS: Array<{ pattern: RegExp; replacements: string[] }> = [
+// ---------------------------------------------------------------------------
+// AI summarization patterns to remove
+// ---------------------------------------------------------------------------
+
+const AI_SUMMARY_PATTERNS: RegExp[] = [
+  /^As mentioned above,?\s*/i,
+  /^As we('ve| have) discussed,?\s*/i,
+  /^To summarize,?\s*/i,
+  /^In summary,?\s*/i,
+  /^To sum up,?\s*/i,
+  /^As previously (mentioned|stated|noted),?\s*/i,
+  /^As (noted|stated) (earlier|above|previously),?\s*/i,
+  /^In conclusion,?\s*/i,
+  /^To (recap|reiterate),?\s*/i,
+  /^All in all,?\s*/i,
+];
+
+// ---------------------------------------------------------------------------
+// AI hedging replacements — stiff hedging -> natural hedging
+// ---------------------------------------------------------------------------
+
+const AI_HEDGING_MAP: Array<{ pattern: RegExp; replacements: string[] }> = [
   {
-    pattern: /\bIt is imperative to consider\b/gi,
-    replacements: ['You should probably think about', 'It helps to consider', "It's worth considering"],
+    pattern: /\bIt is (imperative|crucial|essential) to consider\b/gi,
+    replacements: ['You should probably think about', 'It\'s worth considering', 'It helps to think about'],
   },
   {
-    pattern: /\bIt is important to note that\b/gi,
-    replacements: ['Worth noting:', 'One thing to keep in mind is that', 'Notably,'],
+    pattern: /\bIt is (important|worth noting) (to note |)that\b/gi,
+    replacements: ['The thing is,', 'Here\'s the deal:', 'Notably,'],
   },
   {
-    pattern: /\bIt is worth mentioning that\b/gi,
-    replacements: ['Also,', "I'd point out that", 'On that note,'],
+    pattern: /\bIt (should|must) be noted that\b/gi,
+    replacements: ['Worth mentioning:', 'Keep in mind that', 'One thing to note:'],
   },
   {
-    pattern: /\bIt should be noted that\b/gi,
-    replacements: ['Mind you,', 'Keep in mind,', 'That said,'],
-  },
-  {
-    pattern: /\bIt is essential to\b/gi,
-    replacements: ["You really need to", "It's key to", "Make sure to"],
+    pattern: /\bIt is (widely|generally) (acknowledged|recognized|accepted) that\b/gi,
+    replacements: ['Most people agree that', 'It\'s pretty well known that', 'The consensus is that'],
   },
   {
     pattern: /\bFurthermore,?\s/gi,
-    replacements: ['Plus, ', 'On top of that, ', 'Also, '],
+    replacements: ['On top of that, ', 'Also, ', 'Plus, '],
   },
   {
     pattern: /\bMoreover,?\s/gi,
-    replacements: ['And ', 'Also, ', 'Beyond that, '],
-  },
-  {
-    pattern: /\bAdditionally,?\s/gi,
-    replacements: ['Also, ', 'On top of that, ', 'And '],
-  },
-  {
-    pattern: /\bConsequently,?\s/gi,
-    replacements: ['So ', 'Because of that, ', 'As a result, '],
+    replacements: ['And ', 'What\'s more, ', 'Also, '],
   },
   {
     pattern: /\bNevertheless,?\s/gi,
     replacements: ['Still, ', 'Even so, ', 'That said, '],
   },
+  {
+    pattern: /\bConsequently,?\s/gi,
+    replacements: ['So ', 'As a result, ', 'Because of that, '],
+  },
+  {
+    pattern: /\bAdditionally,?\s/gi,
+    replacements: ['Also, ', 'On top of that, ', 'Plus, '],
+  },
+  {
+    pattern: /\bIn order to\b/gi,
+    replacements: ['To'],
+  },
+  {
+    pattern: /\bDue to the fact that\b/gi,
+    replacements: ['Because', 'Since'],
+  },
+  {
+    pattern: /\bAt the present time\b/gi,
+    replacements: ['Right now', 'Currently', 'These days'],
+  },
+  {
+    pattern: /\bA significant (number|amount|portion) of\b/gi,
+    replacements: ['A lot of', 'Many', 'Plenty of'],
+  },
 ];
 
-const PERSONAL_QUALIFIERS = [
-  'in my experience,',
-  "from what I've seen,",
-  "I'd argue",
-  'I think',
-  'honestly,',
-  'as far as I can tell,',
-  "from what I've gathered,",
-];
+// ---------------------------------------------------------------------------
+// Natural hedging insertions
+// ---------------------------------------------------------------------------
 
-const NATURAL_HEDGES = [
+const NATURAL_HEDGES: string[] = [
   'probably',
   'seems like',
   'might be',
-  "I'd guess",
+  'I\'d guess',
   'likely',
   'arguably',
 ];
 
-const CALLBACK_PHRASES = [
-  'going back to what we said about',
-  'circling back to',
-  'remember when we talked about',
-  'as we touched on earlier with',
+// ---------------------------------------------------------------------------
+// Callback phrases
+// ---------------------------------------------------------------------------
+
+const CALLBACK_PHRASES: string[] = [
+  'Going back to what we said about',
+  'Remember when we talked about',
+  'This ties back to',
+  'Like I mentioned with',
+  'Circling back to',
 ];
 
-// ── Helpers ──────────────────────────────────────────────────────────────────
+// ---------------------------------------------------------------------------
+// Core transformations
+// ---------------------------------------------------------------------------
 
-function removeSummarizationOpener(sentence: string): string {
-  let result = sentence;
-  for (const pattern of SUMMARIZATION_PATTERNS) {
-    const cleaned = result.replace(pattern, '');
-    if (cleaned !== result && cleaned.length > 0) {
-      // Capitalize the first letter of the remaining text
-      result = cleaned.charAt(0).toUpperCase() + cleaned.slice(1);
+/**
+ * Add personal qualifiers to ~6% of sentences when informal tone is allowed.
+ */
+function addPersonalQualifiers(
+  sentences: string[],
+  rng: () => number,
+  config: ModeConfig,
+): string[] {
+  if (config.preserveFormalTone) return sentences;
+
+  return sentences.map((s, idx) => {
+    // Don't add to the very first sentence or very short ones
+    if (idx === 0 || s.trim().length < 25) return s;
+
+    if (rng() < 0.06) {
+      const qualifier = PERSONAL_QUALIFIERS[Math.floor(rng() * PERSONAL_QUALIFIERS.length)];
+      const trimmed = s.trim();
+      // Lowercase the first character when prepending a qualifier
+      const lowered = trimmed[0].toLowerCase() + trimmed.slice(1);
+      return `${qualifier} ${lowered}`;
     }
+    return s;
+  });
+}
+
+/**
+ * Remove AI summarization pattern openings.
+ */
+function removeAISummarization(sentences: string[]): string[] {
+  return sentences
+    .map((s) => {
+      let cleaned = s;
+      for (const pattern of AI_SUMMARY_PATTERNS) {
+        cleaned = cleaned.replace(pattern, '');
+      }
+      // If we stripped the opening, capitalize the new first letter
+      if (cleaned !== s && cleaned.length > 0) {
+        cleaned = cleaned[0].toUpperCase() + cleaned.slice(1);
+      }
+      return cleaned;
+    })
+    .filter((s) => s.trim().length > 0);
+}
+
+/**
+ * Replace AI hedging phrases with natural alternatives.
+ */
+function replaceAIHedging(text: string, rng: () => number): string {
+  let result = text;
+  for (const entry of AI_HEDGING_MAP) {
+    result = result.replace(entry.pattern, () => {
+      return entry.replacements[Math.floor(rng() * entry.replacements.length)];
+    });
   }
   return result;
 }
 
-function replaceAIHedging(sentence: string, rng: () => number): string {
-  let result = sentence;
-  for (const { pattern, replacements } of AI_HEDGING_REPLACEMENTS) {
-    if (pattern.test(result)) {
-      const replacement = replacements[Math.floor(rng() * replacements.length)];
-      // Reset lastIndex for global patterns
-      pattern.lastIndex = 0;
-      result = result.replace(pattern, replacement);
-      pattern.lastIndex = 0;
+/**
+ * Insert natural hedging words into ~4% of declarative sentences.
+ */
+function insertNaturalHedging(
+  sentences: string[],
+  rng: () => number,
+  config: ModeConfig,
+): string[] {
+  if (config.preserveFormalTone) return sentences;
+
+  return sentences.map((s) => {
+    const trimmed = s.trim();
+    if (rng() >= 0.04 || trimmed.length < 30 || trimmed.endsWith('?')) return s;
+
+    const hedge = NATURAL_HEDGES[Math.floor(rng() * NATURAL_HEDGES.length)];
+    const words = trimmed.split(/\s+/);
+
+    // Insert after the subject (roughly after the 2nd or 3rd word)
+    if (words.length > 4) {
+      const insertPos = 2 + Math.floor(rng() * 2);
+      words.splice(insertPos, 0, hedge);
+      return words.join(' ');
+    }
+    return s;
+  });
+}
+
+/**
+ * Add callbacks to earlier points — very sparingly (~2% of sentences
+ * that appear in the latter half of the text).
+ */
+function addCallbacks(
+  sentences: string[],
+  rng: () => number,
+  config: ModeConfig,
+): string[] {
+  if (config.preserveFormalTone) return sentences;
+  if (sentences.length < 6) return sentences;
+
+  const halfwayPoint = Math.floor(sentences.length / 2);
+
+  // Extract a key noun from an early sentence for the callback reference
+  const earlyNouns = extractKeyNouns(sentences.slice(0, halfwayPoint));
+
+  return sentences.map((s, idx) => {
+    if (idx < halfwayPoint || earlyNouns.length === 0) return s;
+
+    if (rng() < 0.02) {
+      const phrase = CALLBACK_PHRASES[Math.floor(rng() * CALLBACK_PHRASES.length)];
+      const noun = earlyNouns[Math.floor(rng() * earlyNouns.length)];
+      const trimmed = s.trim();
+      const lowered = trimmed[0].toLowerCase() + trimmed.slice(1);
+      return `${phrase} ${noun}, ${lowered}`;
+    }
+    return s;
+  });
+}
+
+/**
+ * Extract candidate key nouns from a set of sentences.
+ * Simple heuristic: look for longer capitalized words that aren't sentence starters.
+ */
+function extractKeyNouns(sentences: string[]): string[] {
+  const nouns: string[] = [];
+  for (const s of sentences) {
+    const words = s.split(/\s+/);
+    for (let i = 1; i < words.length; i++) {
+      const w = words[i].replace(/[^a-zA-Z]/g, '');
+      if (w.length >= 4 && /^[a-z]/.test(w)) {
+        nouns.push(w);
+      }
     }
   }
-  return result;
+  // Deduplicate and limit
+  return [...new Set(nouns)].slice(0, 10);
 }
 
-function extractKeyNoun(sentence: string): string | null {
-  // Extract a likely key noun from a sentence (simple heuristic: first noun-like word after an article)
-  const match = sentence.match(/\b(?:the|a|an)\s+(\w{4,})/i);
-  return match ? match[1].toLowerCase() : null;
-}
-
-// ── Stage ────────────────────────────────────────────────────────────────────
+// ---------------------------------------------------------------------------
+// Stage export
+// ---------------------------------------------------------------------------
 
 const coherenceHumanize: HumanizationStage = {
   name: 'Coherence Humanize',
@@ -159,86 +300,25 @@ const coherenceHumanize: HumanizationStage = {
     const seed = hashText(text);
     const rng = createRng(seed);
 
-    const paragraphs = text.split(/\n\s*\n/);
-    const allProcessed: string[] = [];
+    // First pass: replace AI hedging at the full-text level
+    let processed = replaceAIHedging(text, rng);
 
-    // Collect key nouns across the entire text for callbacks
-    const keyNouns: string[] = [];
+    // Split into paragraphs, then sentences
+    const paragraphs = processed.split(/\n\s*\n/);
 
-    for (let pi = 0; pi < paragraphs.length; pi++) {
-      const para = paragraphs[pi];
-      if (!para.trim()) {
-        allProcessed.push(para);
-        continue;
-      }
+    const result = paragraphs.map((paragraph) => {
+      let sentences = splitSentences(paragraph);
+      if (sentences.length === 0) return paragraph;
 
-      const sentences = splitSentences(para);
-      const result: string[] = [];
+      sentences = removeAISummarization(sentences);
+      sentences = addPersonalQualifiers(sentences, rng, config);
+      sentences = insertNaturalHedging(sentences, rng, config);
+      sentences = addCallbacks(sentences, rng, config);
 
-      for (let si = 0; si < sentences.length; si++) {
-        let s = sentences[si];
+      return sentences.join(' ');
+    });
 
-        // ── Remove AI summarization patterns ─────────────────────────
-        s = removeSummarizationOpener(s);
-
-        // If the sentence was entirely a summarization phrase, skip it
-        if (!s.trim() || s.trim().length < 5) continue;
-
-        // ── Replace AI hedging with natural hedging ──────────────────
-        s = replaceAIHedging(s, rng);
-
-        // ── Add personal qualifiers (when !preserveFormalTone) ───────
-        if (
-          !config.preserveFormalTone &&
-          rng() < 0.06 &&
-          si > 0 &&
-          s.length > 20
-        ) {
-          const qualifier = PERSONAL_QUALIFIERS[Math.floor(rng() * PERSONAL_QUALIFIERS.length)];
-          // Lowercase the first character and prepend qualifier
-          s = `${qualifier.charAt(0).toUpperCase()}${qualifier.slice(1)} ${s.charAt(0).toLowerCase()}${s.slice(1)}`;
-        }
-
-        // ── Inject natural hedging words (~5%) ───────────────────────
-        if (
-          !config.preserveFormalTone &&
-          rng() < 0.05 &&
-          s.split(/\s+/).length >= 6
-        ) {
-          const hedge = NATURAL_HEDGES[Math.floor(rng() * NATURAL_HEDGES.length)];
-          const words = s.split(/\s+/);
-          // Insert hedge after the second or third word
-          const pos = Math.min(2, words.length - 1);
-          words.splice(pos, 0, hedge);
-          s = words.join(' ');
-        }
-
-        // ── Add callbacks to earlier points (~2%, after enough text) ─
-        if (
-          !config.preserveFormalTone &&
-          rng() < 0.02 &&
-          keyNouns.length >= 3 &&
-          pi > 1 &&
-          si === 0
-        ) {
-          const noun = keyNouns[Math.floor(rng() * keyNouns.length)];
-          const phrase = CALLBACK_PHRASES[Math.floor(rng() * CALLBACK_PHRASES.length)];
-          s = `${phrase.charAt(0).toUpperCase()}${phrase.slice(1)} ${noun}, ${s.charAt(0).toLowerCase()}${s.slice(1)}`;
-        }
-
-        // Track key nouns for possible callbacks
-        const noun = extractKeyNoun(s);
-        if (noun && !keyNouns.includes(noun)) {
-          keyNouns.push(noun);
-        }
-
-        result.push(s);
-      }
-
-      allProcessed.push(result.join(' '));
-    }
-
-    return allProcessed.join('\n\n');
+    return result.join('\n\n');
   },
 };
 

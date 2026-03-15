@@ -70,9 +70,9 @@ export function hapaxLegomenaRatio(words: string[]): number {
   if (uniqueCount === 0) return 0;
 
   let hapaxCount = 0;
-  for (const count of freq.values()) {
+  freq.forEach((count) => {
     if (count === 1) hapaxCount++;
-  }
+  });
 
   return hapaxCount / uniqueCount;
 }
