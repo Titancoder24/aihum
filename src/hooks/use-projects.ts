@@ -15,7 +15,7 @@ export function useProjects() {
     queryFn: () => storage.getDocuments(),
   });
 
-  const saveMutation = useMutation<void, Error, Document>({
+  const saveMutation = useMutation<void, Error, Document, { previous?: Document[] }>({
     mutationFn: (doc: Document) => storage.saveDocument(doc),
     onMutate: async (newDoc) => {
       await queryClient.cancelQueries({ queryKey: DOCUMENTS_KEY });
@@ -33,7 +33,7 @@ export function useProjects() {
 
       return { previous };
     },
-    onError: (_err, _doc, context: { previous?: Document[] } | undefined) => {
+    onError: (_err, _doc, context) => {
       if (context?.previous) {
         queryClient.setQueryData(DOCUMENTS_KEY, context.previous);
       }
@@ -43,7 +43,7 @@ export function useProjects() {
     },
   });
 
-  const deleteMutation = useMutation<void, Error, string>({
+  const deleteMutation = useMutation<void, Error, string, { previous?: Document[] }>({
     mutationFn: (id: string) => storage.deleteDocument(id),
     onMutate: async (id) => {
       await queryClient.cancelQueries({ queryKey: DOCUMENTS_KEY });
@@ -55,7 +55,7 @@ export function useProjects() {
 
       return { previous };
     },
-    onError: (_err, _id, context: { previous?: Document[] } | undefined) => {
+    onError: (_err, _id, context) => {
       if (context?.previous) {
         queryClient.setQueryData(DOCUMENTS_KEY, context.previous);
       }
