@@ -44,14 +44,16 @@ export function coefficientOfVariation(values: number[]): number {
 export function shannonEntropy(frequencies: Map<string, number>): number {
   if (frequencies.size === 0) return 0;
 
+  const values = Array.from(frequencies.values());
   let total = 0;
-  for (const count of frequencies.values()) {
-    total += count;
+  for (let i = 0; i < values.length; i++) {
+    total += values[i];
   }
   if (total === 0) return 0;
 
   let entropy = 0;
-  for (const count of frequencies.values()) {
+  for (let i = 0; i < values.length; i++) {
+    const count = values[i];
     if (count <= 0) continue;
     const p = count / total;
     entropy -= p * Math.log2(p);
