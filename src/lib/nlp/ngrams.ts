@@ -57,8 +57,8 @@ export function ngramProbabilities(ngrams: string[]): Map<string, number> {
   const freq = ngramFrequencies(ngrams);
   const total = ngrams.length;
 
-  for (const [ngram, count] of freq) {
+  freq.forEach((count, ngram) => {
     probs.set(ngram, count / total);
-  }
+  });
   return probs;
 }

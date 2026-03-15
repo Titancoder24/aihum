@@ -1,126 +1,211 @@
 /**
- * Module 1: Perplexity Analysis.
- * Measures how "predictable" the text is at a character/word level.
- * AI-generated text tends to have lower perplexity (more predictable).
+ * Perplexity-based AI detection module.
+ *
+ * Builds a trigram language model from the input text and measures how
+ * predictable (low perplexity) the text is. AI-generated text tends to
+ * have low, uniform perplexity; human text has higher and more variable
+ * perplexity across sentences.
  */
 
-import type { DetectionModule, ModuleAnalysis, SentenceContext, DetectedPattern } from '@/types';
+import type {
+  DetectionModule,
+  ModuleAnalysis,
+  SentenceContext,
+  DetectedPattern,
+} from '@/types';
 import { splitSentences, tokenizeWords } from '@/lib/nlp/tokenizer';
-import { generateCharNgrams, ngramFrequencies } from '@/lib/nlp/ngrams';
-import { shannonEntropy, normalize, mean } from '@/lib/nlp/statistics';
-import { DEFAULT_DETECTION_WEIGHTS } from '@/constants';
+import { generateWordNgrams, ngramFrequencies } from '@/lib/nlp/ngrams';
+import {
+  mean,
+  standardDeviation,
+  coefficientOfVariation,
+  normalize,
+} from '@/lib/nlp/statistics';
+
+/** Minimum words needed for meaningful perplexity analysis. */
+const MIN_WORDS = 20;
+
+/** N-gram order for the language model. */
+const NGRAM_ORDER = 3;
+
+/** Small probability floor for unseen n-grams (Laplace-like smoothing). */
+const SMOOTHING_EPSILON = 1e-6;
 
 /**
- * Calculate pseudo-perplexity using character n-gram entropy.
- * Lower entropy = more predictable = more likely AI.
+ * Build trigram and bigram frequency maps from an array of words.
  */
-function calculateCharPerplexity(text: string): number {
-  const trigrams = generateCharNgrams(text.toLowerCase(), 3);
-  if (trigrams.length === 0) return 0.5;
-
-  const freq = ngramFrequencies(trigrams);
-  const entropy = shannonEntropy(freq);
-
-  // Typical English text has char trigram entropy around 4-7 bits.
-  // AI text tends toward the lower end (4-5), human text higher (5-7+).
-  // Normalize: low entropy -> high score (AI-like)
-  return normalize(entropy, 3.5, 7.0, 1.0, 0.0);
+function buildTrigramModel(words: string[]): {
+  trigramFreq: Map<string, number>;
+  bigramFreq: Map<string, number>;
+} {
+  const lowerWords = words.map((w) => w.toLowerCase());
+  const trigrams = generateWordNgrams(lowerWords, 3);
+  const bigrams = generateWordNgrams(lowerWords, 2);
+  return {
+    trigramFreq: ngramFrequencies(trigrams),
+    bigramFreq: ngramFrequencies(bigrams),
+  };
 }
 
 /**
- * Calculate word-level predictability using bigram transition probabilities.
+ * Calculate perplexity of a sentence given the trigram and bigram frequency maps.
+ * Uses conditional probability: P(w3 | w1 w2) = count(w1 w2 w3) / count(w1 w2).
+ * Perplexity = 2^(-1/N * sum(log2(P(w_i | context)))).
  */
-function calculateWordPredictability(words: string[]): number {
-  if (words.length < 10) return 0.5;
+function sentencePerplexity(
+  sentenceWords: string[],
+  trigramFreq: Map<string, number>,
+  bigramFreq: Map<string, number>,
+): number {
+  const lowerWords = sentenceWords.map((w) => w.toLowerCase());
 
-  const lower = words.map((w) => w.toLowerCase());
-  const bigrams = new Map<string, Map<string, number>>();
-
-  for (let i = 0; i < lower.length - 1; i++) {
-    const w1 = lower[i];
-    const w2 = lower[i + 1];
-    if (!bigrams.has(w1)) bigrams.set(w1, new Map());
-    const following = bigrams.get(w1)!;
-    following.set(w2, (following.get(w2) ?? 0) + 1);
+  if (lowerWords.length < NGRAM_ORDER) {
+    // Too short for trigram analysis — return a neutral perplexity
+    return 50;
   }
 
-  // Calculate average conditional entropy
-  let totalEntropy = 0;
+  let logProbSum = 0;
   let count = 0;
 
-  for (const [, following] of bigrams) {
-    const total = Array.from(following.values()).reduce((s, v) => s + v, 0);
-    if (total < 2) continue;
-    let h = 0;
-    for (const freq of following.values()) {
-      const p = freq / total;
-      if (p > 0) h -= p * Math.log2(p);
-    }
-    totalEntropy += h;
+  for (let i = 0; i <= lowerWords.length - NGRAM_ORDER; i++) {
+    const trigram = `${lowerWords[i]} ${lowerWords[i + 1]} ${lowerWords[i + 2]}`;
+    const bigram = `${lowerWords[i]} ${lowerWords[i + 1]}`;
+
+    const trigramCount = trigramFreq.get(trigram) ?? 0;
+    const bigramCount = bigramFreq.get(bigram) ?? 0;
+
+    // Conditional probability with smoothing
+    const prob = bigramCount > 0
+      ? (trigramCount + SMOOTHING_EPSILON) / (bigramCount + SMOOTHING_EPSILON * bigramFreq.size)
+      : SMOOTHING_EPSILON;
+
+    logProbSum += Math.log2(prob);
     count++;
   }
 
-  if (count === 0) return 0.5;
-  const avgEntropy = totalEntropy / count;
+  if (count === 0) return 50;
 
-  // Lower conditional entropy = more predictable = AI
-  return normalize(avgEntropy, 0.5, 4.0, 0.8, 0.1);
+  // Perplexity = 2^(-1/N * sum(log2(p)))
+  const avgLogProb = logProbSum / count;
+  return Math.pow(2, -avgLogProb);
 }
 
+/**
+ * Perplexity detection module.
+ *
+ * Scoring logic:
+ * - AI text: low average perplexity + low perplexity variance => score near 1
+ * - Human text: high average perplexity + high perplexity variance => score near 0
+ */
 const perplexityModule: DetectionModule = {
   name: 'perplexity',
-  weight: DEFAULT_DETECTION_WEIGHTS.perplexity,
+  weight: 0.3,
 
   analyze(text: string): ModuleAnalysis {
-    const words = tokenizeWords(text);
     const details: string[] = [];
     const patterns: DetectedPattern[] = [];
 
-    if (words.length < 5) {
-      return { score: 0.5, details: ['Text too short for reliable perplexity analysis.'], patterns: [] };
+    const words = tokenizeWords(text);
+
+    if (words.length < MIN_WORDS) {
+      details.push(
+        `Text too short for perplexity analysis (${words.length} words, need ${MIN_WORDS}+).`,
+      );
+      return { score: 0.5, details, patterns };
     }
 
-    const charPerplexity = calculateCharPerplexity(text);
-    const wordPredictability = calculateWordPredictability(words);
+    const sentences = splitSentences(text);
+    if (sentences.length < 2) {
+      details.push('Only one sentence detected; perplexity variance unavailable.');
+      return { score: 0.5, details, patterns };
+    }
 
-    details.push(`Character-level perplexity score: ${charPerplexity.toFixed(3)}`);
-    details.push(`Word-level predictability score: ${wordPredictability.toFixed(3)}`);
+    // Build trigram model from the full text
+    const { trigramFreq, bigramFreq } = buildTrigramModel(words);
 
-    const score = charPerplexity * 0.5 + wordPredictability * 0.5;
+    // Calculate per-sentence perplexity
+    const perplexities: number[] = [];
+    for (const sentence of sentences) {
+      const sentWords = tokenizeWords(sentence);
+      if (sentWords.length >= NGRAM_ORDER) {
+        perplexities.push(sentencePerplexity(sentWords, trigramFreq, bigramFreq));
+      }
+    }
 
-    if (score > 0.65) {
+    if (perplexities.length < 2) {
+      details.push('Not enough sentences with 3+ words for perplexity analysis.');
+      return { score: 0.5, details, patterns };
+    }
+
+    const avgPerplexity = mean(perplexities);
+    const perplexityStd = standardDeviation(perplexities);
+    const perplexityCV = coefficientOfVariation(perplexities);
+
+    details.push(`Average perplexity: ${avgPerplexity.toFixed(2)}`);
+    details.push(`Perplexity std dev: ${perplexityStd.toFixed(2)}`);
+    details.push(`Perplexity CV: ${perplexityCV.toFixed(3)}`);
+
+    // Score component 1: Average perplexity level
+    // AI text typically has perplexity in range [2, 20], human text [20, 200+]
+    // Low perplexity => high AI score
+    const perplexityScore = 1 - normalize(avgPerplexity, 2, 150);
+
+    // Score component 2: Perplexity variance (CV)
+    // AI text: CV typically 0.05-0.2, Human text: CV typically 0.3-1.0+
+    // Low CV => high AI score
+    const varianceScore = 1 - normalize(perplexityCV, 0.05, 0.8);
+
+    // Combine: 60% perplexity level, 40% variance
+    const combinedScore = perplexityScore * 0.6 + varianceScore * 0.4;
+    const finalScore = Math.max(0, Math.min(1, combinedScore));
+
+    details.push(`Perplexity level score: ${perplexityScore.toFixed(3)}`);
+    details.push(`Variance score: ${varianceScore.toFixed(3)}`);
+    details.push(`Combined score: ${finalScore.toFixed(3)}`);
+
+    // Detect patterns
+    if (perplexityScore > 0.7) {
       patterns.push({
         name: 'Low Perplexity',
-        description: 'Text exhibits unusually low perplexity, suggesting highly predictable word choices.',
-        severity: score > 0.8 ? 'high' : 'medium',
+        description:
+          'Text has unusually low perplexity, suggesting highly predictable token sequences typical of AI generation.',
+        severity: perplexityScore > 0.85 ? 'high' : 'medium',
+        examples: sentences.slice(0, 2),
+      });
+    }
+
+    if (varianceScore > 0.7) {
+      patterns.push({
+        name: 'Uniform Perplexity',
+        description:
+          'Perplexity is very consistent across sentences, lacking the natural variation seen in human writing.',
+        severity: varianceScore > 0.85 ? 'high' : 'medium',
         examples: [],
       });
     }
 
-    details.push(`Combined perplexity score: ${score.toFixed(3)}`);
-    return { score: Math.max(0, Math.min(1, score)), details, patterns };
+    return { score: finalScore, details, patterns };
   },
 
   analyzeSentence(sentence: string, context: SentenceContext): number {
-    const words = tokenizeWords(sentence);
-    if (words.length < 3) return 0.5;
+    const allWords = tokenizeWords(context.fullText);
 
-    const charScore = calculateCharPerplexity(sentence);
+    if (allWords.length < MIN_WORDS) {
+      return 0.5;
+    }
 
-    // Also check if this sentence's vocabulary is predictable given context
-    const contextWords = new Set(
-      context.sentences
-        .filter((_, i) => Math.abs(i - context.index) <= 2 && i !== context.index)
-        .flatMap((s) => tokenizeWords(s).map((w) => w.toLowerCase()))
-    );
+    const { trigramFreq, bigramFreq } = buildTrigramModel(allWords);
+    const sentWords = tokenizeWords(sentence);
 
-    const sentenceWords = words.map((w) => w.toLowerCase());
-    const overlapRatio = sentenceWords.filter((w) => contextWords.has(w)).length / sentenceWords.length;
+    if (sentWords.length < NGRAM_ORDER) {
+      return 0.5;
+    }
 
-    // High overlap with nearby sentences suggests predictable continuation
-    const contextScore = normalize(overlapRatio, 0.1, 0.6, 0.2, 0.8);
+    const perplexity = sentencePerplexity(sentWords, trigramFreq, bigramFreq);
 
-    return Math.max(0, Math.min(1, charScore * 0.6 + contextScore * 0.4));
+    // Low perplexity => high AI score
+    const score = 1 - normalize(perplexity, 2, 150);
+    return Math.max(0, Math.min(1, score));
   },
 };
 

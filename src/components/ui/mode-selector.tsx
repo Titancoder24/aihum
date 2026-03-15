@@ -26,7 +26,7 @@ const ModeSelector = React.forwardRef<HTMLDivElement, ModeSelectorProps>(
     >
       {modes.map((mode) => {
         const Icon = mode.icon;
-        const isSelected = selected === mode.name;
+        const isSelected = mode.name === selected;
 
         return (
           <button
@@ -35,11 +35,11 @@ const ModeSelector = React.forwardRef<HTMLDivElement, ModeSelectorProps>(
             onClick={() => onSelect(mode.name)}
             className={cn(
               'group relative flex flex-col items-start gap-3 rounded-xl border p-4 text-left transition-all duration-200',
-              'bg-surface-dark hover:bg-white/5',
+              'hover:bg-white/[0.03]',
               'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50',
               isSelected
                 ? 'border-primary bg-primary/5 shadow-lg shadow-primary/10'
-                : 'border-white/10 hover:border-white/20'
+                : 'border-white/10 bg-surface-dark'
             )}
           >
             <div
@@ -47,7 +47,7 @@ const ModeSelector = React.forwardRef<HTMLDivElement, ModeSelectorProps>(
                 'flex h-10 w-10 items-center justify-center rounded-lg transition-colors',
                 isSelected
                   ? 'bg-primary/15 text-primary'
-                  : 'bg-white/5 text-gray-400 group-hover:text-gray-200'
+                  : 'bg-white/5 text-gray-400 group-hover:text-gray-300'
               )}
             >
               <Icon className="h-5 w-5" />
@@ -61,7 +61,7 @@ const ModeSelector = React.forwardRef<HTMLDivElement, ModeSelectorProps>(
               >
                 {mode.label}
               </p>
-              <p className="mt-1 text-xs text-gray-500 leading-relaxed">
+              <p className="mt-0.5 text-xs text-gray-500 leading-relaxed">
                 {mode.description}
               </p>
             </div>

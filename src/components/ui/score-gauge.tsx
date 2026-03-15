@@ -30,27 +30,25 @@ const ScoreGauge = React.forwardRef<HTMLDivElement, ScoreGaugeProps>(
     const cx = size / 2;
     const cy = size / 2;
 
-    // Arc from 180deg (left) to 0deg (right) — bottom semicircle inverted to top
+    // Arc from 180deg to 0deg (left to right, bottom half is open)
     const startAngle = Math.PI;
     const endAngle = 0;
     const sweepAngle = startAngle - (startAngle - endAngle) * (clampedScore / 100);
 
     const startX = cx + radius * Math.cos(startAngle);
     const startY = cy - radius * Math.sin(startAngle);
-    const endX = cx + radius * Math.cos(endAngle);
-    const endY = cy - radius * Math.sin(endAngle);
+    const bgEndX = cx + radius * Math.cos(endAngle);
+    const bgEndY = cy - radius * Math.sin(endAngle);
+    const fillEndX = cx + radius * Math.cos(sweepAngle);
+    const fillEndY = cy - radius * Math.sin(sweepAngle);
 
-    // Background arc path (full semicircle)
-    const bgPath = `M ${startX} ${startY} A ${radius} ${radius} 0 0 1 ${endX} ${endY}`;
+    const bgPath = `M ${startX} ${startY} A ${radius} ${radius} 0 1 1 ${bgEndX} ${bgEndY}`;
+    const fillPath =
+      clampedScore <= 0
+        ? ''
+        : `M ${startX} ${startY} A ${radius} ${radius} 0 ${clampedScore > 50 ? 1 : 0} 1 ${fillEndX} ${fillEndY}`;
 
-    // Value arc endpoint
-    const valEndX = cx + radius * Math.cos(sweepAngle);
-    const valEndY = cy - radius * Math.sin(sweepAngle);
-    const largeArc = clampedScore > 50 ? 1 : 0;
-    const valuePath = `M ${startX} ${startY} A ${radius} ${radius} 0 ${largeArc} 1 ${valEndX} ${valEndY}`;
-
-    // Circumference of the semicircle for stroke animation
-    const semiCircumference = Math.PI * radius;
+    const circumference = Math.PI * radius;
 
     return (
       <div
@@ -63,8 +61,9 @@ const ScoreGauge = React.forwardRef<HTMLDivElement, ScoreGaugeProps>(
           height={size / 2 + strokeWidth}
           viewBox={`0 0 ${size} ${size / 2 + strokeWidth}`}
           fill="none"
+          className="overflow-visible"
         >
-          {/* Background track */}
+          {/* Background arc */}
           <path
             d={bgPath}
             stroke="currentColor"
@@ -72,24 +71,24 @@ const ScoreGauge = React.forwardRef<HTMLDivElement, ScoreGaugeProps>(
             strokeLinecap="round"
             className="text-white/10"
           />
-          {/* Animated value arc */}
-          {clampedScore > 0 && (
+          {/* Filled arc */}
+          {fillPath && (
             <MotionPath
-              d={valuePath}
+              d={fillPath}
               stroke={color}
               strokeWidth={strokeWidth}
               strokeLinecap="round"
               fill="none"
               initial={{ pathLength: 0 }}
               animate={{ pathLength: 1 }}
-              transition={{ duration: 1, ease: 'easeOut', delay: 0.2 }}
+              transition={{ duration: 1, ease: [0.16, 1, 0.3, 1], delay: 0.2 }}
             />
           )}
         </svg>
-        {/* Score value */}
+        {/* Center score display */}
         <div
           className="absolute flex flex-col items-center"
-          style={{ bottom: strokeWidth / 2, left: '50%', transform: 'translateX(-50%)' }}
+          style={{ top: size / 2 - 10, left: '50%', transform: 'translateX(-50%)' }}
         >
           <span
             className="text-3xl font-bold tabular-nums"
