@@ -283,7 +283,7 @@ function extractKeyNouns(sentences: string[]): string[] {
     }
   }
   // Deduplicate and limit
-  return [...new Set(nouns)].slice(0, 10);
+  return Array.from(new Set(nouns)).slice(0, 10);
 }
 
 // ---------------------------------------------------------------------------
