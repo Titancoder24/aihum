@@ -6,12 +6,12 @@ import { blogPosts } from '@/lib/content/blog-posts';
 export const metadata: Metadata = {
   title: 'Blog — AI Detection & Humanization Insights',
   description:
-    'Expert articles on AI detection, humanization techniques, academic integrity, and content creation. Stay ahead of the curve.',
+    'Expert insights on AI detection, text humanization, and content authenticity. Tips, guides, and industry analysis from the HumanizeElite team.',
   alternates: { canonical: `${SITE.url}/blog` },
   openGraph: {
     title: 'Blog — AI Detection & Humanization Insights | HumanizeElite',
     description:
-      'Expert articles on AI detection, humanization techniques, and content creation.',
+      'Expert insights on AI detection, text humanization, and content authenticity.',
     url: `${SITE.url}/blog`,
   },
 };
@@ -29,11 +29,11 @@ export default function BlogPage() {
         {/* Header */}
         <div className="text-center mb-16">
           <h1 className="text-4xl md:text-5xl font-bold text-gray-100 mb-4">
-            The <span className="gradient-text">HumanizeElite</span> Blog
+            The HumanizeElite <span className="gradient-text">Blog</span>
           </h1>
           <p className="text-lg text-gray-400 max-w-2xl mx-auto">
-            Insights on AI detection, humanization techniques, academic integrity,
-            and the future of AI-assisted content creation.
+            Expert insights on AI detection, text humanization, and the evolving
+            landscape of AI-generated content.
           </p>
         </div>
 
@@ -43,16 +43,16 @@ export default function BlogPage() {
             <Link
               key={post.slug}
               href={`/blog/${post.slug}`}
-              className="glass rounded-2xl overflow-hidden hover:bg-white/[0.08] transition-colors group flex flex-col"
+              className="glass rounded-2xl overflow-hidden group hover:bg-white/[0.08] transition-colors"
             >
-              {/* Decorative header */}
-              <div className="h-2 gradient-primary" />
+              {/* Gradient placeholder for image */}
+              <div className="h-40 bg-gradient-to-br from-primary/20 to-violet-500/20" />
 
-              <div className="p-6 flex flex-col flex-1">
-                <div className="flex items-center gap-3 mb-4">
+              <div className="p-6">
+                <div className="flex items-center gap-3 mb-3">
                   <span
                     className={`px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                      categoryColors[post.category] ?? 'bg-gray-700 text-gray-300'
+                      categoryColors[post.category] ?? 'bg-gray-500/20 text-gray-400'
                     }`}
                   >
                     {post.category}
@@ -64,21 +64,16 @@ export default function BlogPage() {
                   {post.title}
                 </h2>
 
-                <p className="text-gray-400 text-sm leading-relaxed flex-1 line-clamp-3">
+                <p className="text-gray-400 text-sm leading-relaxed line-clamp-3">
                   {post.excerpt}
                 </p>
 
-                <div className="mt-4 pt-4 border-t border-white/5 flex items-center justify-between">
-                  <time className="text-xs text-gray-500" dateTime={post.date}>
-                    {new Date(post.date).toLocaleDateString('en-US', {
-                      year: 'numeric',
-                      month: 'long',
-                      day: 'numeric',
-                    })}
-                  </time>
-                  <span className="text-primary text-sm font-medium group-hover:underline">
-                    Read more
-                  </span>
+                <div className="mt-4 text-xs text-gray-500">
+                  {new Date(post.date).toLocaleDateString('en-US', {
+                    year: 'numeric',
+                    month: 'long',
+                    day: 'numeric',
+                  })}
                 </div>
               </div>
             </Link>

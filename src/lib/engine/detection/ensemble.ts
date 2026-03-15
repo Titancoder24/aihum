@@ -20,7 +20,7 @@ import { DEFAULT_DETECTION_WEIGHTS } from '@/constants';
 import perplexityModule from './perplexity';
 import burstinessModule from './burstiness';
 import vocabularyDiversityModule from './vocabulary-diversity';
-import structuralModule from './structural-patterns';
+import structuralPatternsModule from './structural-patterns';
 import coherenceFlowModule from './coherence-flow';
 import stylometricModule from './stylometric';
 import statisticalSignatureModule from './statistical-signature';
@@ -34,7 +34,7 @@ const ALL_MODULES: ReadonlyArray<{ weightKey: string; module: DetectionModule }>
   { weightKey: 'perplexity', module: perplexityModule },
   { weightKey: 'burstiness', module: burstinessModule },
   { weightKey: 'vocabulary', module: vocabularyDiversityModule },
-  { weightKey: 'structural', module: structuralModule },
+  { weightKey: 'structural', module: structuralPatternsModule },
   { weightKey: 'coherence', module: coherenceFlowModule },
   { weightKey: 'stylometric', module: stylometricModule },
   { weightKey: 'statistical', module: statisticalSignatureModule },
